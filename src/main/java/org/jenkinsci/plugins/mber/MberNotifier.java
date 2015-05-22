@@ -40,7 +40,7 @@ import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Notifier;
 import hudson.tasks.Publisher;
 import hudson.tasks.test.AbstractTestResultAction;
-import hudson.util.FormValidation;
+import hudson.util.ListBoxModel;
 import hudson.util.Secret;
 import java.io.File;
 import java.io.IOException;
@@ -48,6 +48,7 @@ import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import java.util.HashMap;
 import net.sf.json.JSONArray;
@@ -55,64 +56,124 @@ import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
-import org.kohsuke.stapler.QueryParameter;
 
 public class MberNotifier extends Notifier
 {
-  private final String application;
-  private final String username;
-  private final Secret password;
   private final String buildName;
   private final String buildDescription;
   private final boolean uploadConsoleLog;
   private final boolean uploadTestResults;
-  private final boolean uploadArtifacts;
-  private final boolean overwriteExistingFiles;
-  private String buildArtifacts;
-  private String artifactFolder;
-  private String artifactTags;
   private JSONObject mberConfig;
   private Map<String, List<HTTParty.Call>> callHistory;
 
+  // Version 1.3 profiles named Mber access profiles.
+  private String accessProfileName;
+
+  // Version 1.1 supports multiple upload destinations.
+  private boolean uploadArtifacts;
+  private List<UploadArtifactsBlock> uploadDestinations;
+
+  // Version 1.2 tied the Mber credentials to the Jenkins job. These are transient so they're not saved.
+  transient private String application;
+  transient private String username;
+  transient private Secret password;
+
+  // Version 1.0 only supported one upload destination. These are transient so they're not saved.
+  transient private boolean overwriteExistingFiles = false;
+  transient private String buildArtifacts;
+  transient private String artifactFolder;
+  transient private String artifactTags;
+
   @DataBoundConstructor
-  public MberNotifier(String application, String username, String password, String buildName, String buildDescription, boolean uploadTestResults, boolean uploadConsoleLog, UploadArtifactsBlock uploadArtifacts)
+  public MberNotifier(String accessProfileName, String buildName, String buildDescription, boolean uploadTestResults, boolean uploadConsoleLog, UploadArtifactsFlag uploadArtifacts)
   {
-    this.application = application;
-    this.username = username;
-    this.password = Secret.fromString(password);
+    this.accessProfileName = accessProfileName;
     this.buildName = buildName;
     this.buildDescription = buildDescription;
     this.uploadConsoleLog = uploadConsoleLog;
     this.uploadTestResults = uploadTestResults;
     this.uploadArtifacts = (uploadArtifacts != null);
     if (uploadArtifacts != null) {
-      this.buildArtifacts = uploadArtifacts.getBuildArtifacts();
-      this.artifactFolder = uploadArtifacts.getArtifactFolder();
-      this.artifactTags = uploadArtifacts.getArtifactTags();
-      this.overwriteExistingFiles = uploadArtifacts.isOverwriteExistingFiles();
+      this.uploadDestinations = uploadArtifacts.getUploadDestinations();
     } else {
-      this.overwriteExistingFiles = false;
+      this.uploadDestinations = new ArrayList<UploadArtifactsBlock>();
     }
+  }
+
+  // This is called when old configurations are loaded and need to be translated
+  // into new formats. Do any kind of data migration here and return the fixed
+  // object. Remember to mark old private instance variables transient to ensure
+  // they're not saved.
+  public Object readResolve()
+  {
+    // Version 1.0 didn't support multiple upload destinations. Map them to the 1.1 format if they're defined.
+    if (this.buildArtifacts != null || this.artifactFolder != null || this.artifactTags != null) {
+      this.uploadArtifacts = true;
+      this.uploadDestinations = new ArrayList<UploadArtifactsBlock>();
+      this.uploadDestinations.add(new UploadArtifactsBlock(this.buildArtifacts, this.artifactFolder, this.artifactTags, this.overwriteExistingFiles, false));
+    }
+    // Version 1.2 tied Mber credentials to a Jenkins job. Map them to the 1.3 format with named access profiles if they're defined.
+    if (this.application != null || this.username != null || this.password != null) {
+      // We don't have access to the Jenkins job at this point, so use a combination of the application and username for the access profile name.
+      this.accessProfileName = String.format("%s.%s", this.application, this.username);
+      final String url = getDescriptor().resolveMberUrlForNotification();
+      final MberAccessProfile accessProfile = new MberAccessProfile(this.accessProfileName, this.application, this.username, this.password.getPlainText(), url);
+      getDescriptor().setOrAddAccessProfile(accessProfile);
+    }
+    return this;
+  }
+
+  public String getAccessProfileName()
+  {
+    return this.accessProfileName;
   }
 
   public String getApplication()
   {
-    return application;
+    final MberAccessProfile profile = getDescriptor().getAccessProfile(getAccessProfileName());
+    if (profile != null) {
+      return profile.getApplication();
+    }
+    return null;
   }
 
   public String getUsername()
   {
-    return username;
+    final MberAccessProfile profile = getDescriptor().getAccessProfile(getAccessProfileName());
+    if (profile != null) {
+      return profile.getUsername();
+    }
+    return null;
   }
 
+  // Providing public access to encrypted passwords allows tests to verify
+  // configuration save and load functionality without exposing plain text
+  // passwords in test result logs.
   public String getPassword()
   {
-    return password.getEncryptedValue();
+    final MberAccessProfile profile = getDescriptor().getAccessProfile(getAccessProfileName());
+    if (profile != null) {
+      return profile.getPassword().getEncryptedValue();
+    }
+    return null;
   }
 
   private String getDecryptedPassword()
   {
-    return password.getPlainText();
+    final MberAccessProfile profile = getDescriptor().getAccessProfile(getAccessProfileName());
+    if (profile != null) {
+      return profile.getPassword().getPlainText();
+    }
+    return null;
+  }
+
+  private String getMberUrl()
+  {
+    final MberAccessProfile profile = getDescriptor().getAccessProfile(getAccessProfileName());
+    if (profile != null) {
+      return profile.getUrl();
+    }
+    return null;
   }
 
   public String getBuildName()
@@ -156,30 +217,54 @@ public class MberNotifier extends Notifier
     return uploadArtifacts;
   }
 
-  public boolean isOverwriteExistingFiles()
+  public boolean isOverwriteExistingFiles(final int index)
   {
-    return overwriteExistingFiles;
-  }
-
-  public String getBuildArtifacts()
-  {
-    return buildArtifacts;
-  }
-
-  public String getArtifactFolder()
-  {
-    if (artifactFolder == null || artifactFolder.isEmpty()) {
-      return getDescriptor().getDefaultArtifactFolder();
+    final List<UploadArtifactsBlock> uploads = getUploadDestinations();
+    if (index < 0 || index >= uploads.size()) {
+      return false;
     }
-    return artifactFolder;
+    return uploads.get(index).isOverwriteExistingFiles();
   }
 
-  public String getArtifactTags()
+  public boolean isLinkToLocalFiles(final int index)
   {
-    if (artifactTags == null || artifactTags.isEmpty()) {
-      return getDescriptor().getDefaultArtifactTags();
+    final List<UploadArtifactsBlock> uploads = getUploadDestinations();
+    if (index < 0 || index >= uploads.size()) {
+      return false;
     }
-    return artifactTags;
+    return uploads.get(index).isLinkToLocalFiles();
+  }
+
+  public String getBuildArtifacts(final int index)
+  {
+    final List<UploadArtifactsBlock> uploads = getUploadDestinations();
+    if (index < 0 || index >= uploads.size()) {
+      return null;
+    }
+    return uploads.get(index).getBuildArtifacts();
+  }
+
+  public String getArtifactFolder(final int index)
+  {
+    final List<UploadArtifactsBlock> uploads = getUploadDestinations();
+    if (index < 0 || index >= uploads.size()) {
+      return UploadArtifactsBlock.getDefaultArtifactFolder();
+    }
+    return uploads.get(index).getArtifactFolder();
+  }
+
+  public String getArtifactTags(final int index)
+  {
+    final List<UploadArtifactsBlock> uploads = getUploadDestinations();
+    if (index < 0 || index >= uploads.size()) {
+      return UploadArtifactsBlock.getDefaultArtifactTags();
+    }
+    return uploads.get(index).getArtifactTags();
+  }
+
+  public List<UploadArtifactsBlock> getUploadDestinations()
+  {
+    return uploadDestinations;
   }
 
   private void recordCallHistory(final AbstractBuild build, final MberClient mber) {
@@ -213,17 +298,17 @@ public class MberNotifier extends Notifier
     return build.getUrl();
   }
 
-  private String[] getUploadTags(final AbstractBuild build, final BuildListener listener, final FilePath file)
+  private String[] getUploadTags(final AbstractBuild build, final BuildListener listener, final FilePath file, final int index)
   {
-    return getUploadTags(build, listener, file.getName());
+    return getUploadTags(build, listener, file.getName(), index);
   }
 
-  private String[] getUploadTags(final AbstractBuild build, final BuildListener listener, final String name)
+  private String[] getUploadTags(final AbstractBuild build, final BuildListener listener, final String name, final int index)
   {
     ArrayList<String> tags = new ArrayList<String>();
     tags.add(name);
 
-    String[] userTags = getArtifactTags().split("\\s+");
+    String[] userTags = getArtifactTags(index).split("\\s+");
     for (String tag : userTags) {
       String resolvedTag = this.resolveEnvironmentVariables(build, listener, tag);
       if (resolvedTag != null && !resolvedTag.isEmpty()) {
@@ -246,15 +331,16 @@ public class MberNotifier extends Notifier
     }
 
     log(listener, "Uploading console output to Mber");
-
-    JSONObject response = makeArtifactFolder(build, listener, mber, false);
+    // Console logs go into the first available artifact upload block, hence the 0 index.
+    // If no upload block is defined, they'll go into the default upload folder.
+    JSONObject response = makeArtifactFolder(build, listener, mber, false, 0);
     if (!response.getString("status").equals("Success")) {
       log(listener, response.getString("error"));
       return;
     }
 
     String uploadDirectoryId = response.getString("directoryId");
-    String[] tags = getUploadTags(build, listener, "console.log");
+    String[] tags = getUploadTags(build, listener, "console.log", 0);
 
     response = mber.upload(new FilePath(logFile), uploadDirectoryId, "console.log", tags, false);
     if (response.getString("status").equals("Duplicate")) {
@@ -287,11 +373,11 @@ public class MberNotifier extends Notifier
     clearCallHistory(build);
   }
 
-  private JSONObject makeArtifactFolder(AbstractBuild build, BuildListener listener, final MberClient mber, boolean logging)
+  private JSONObject makeArtifactFolder(AbstractBuild build, BuildListener listener, final MberClient mber, boolean logging, final int index)
   {
-    String resolvedArtifactFolder = resolveArtifactFolder(build, listener);
+    String resolvedArtifactFolder = resolveArtifactFolder(build, listener, index);
     if (resolvedArtifactFolder == null || resolvedArtifactFolder.isEmpty()) {
-      return MberJSON.failed("Couldn't resolve environment variables in artifact folder "+getArtifactFolder());
+      return MberJSON.failed("Couldn't resolve environment variables in artifact folder "+getArtifactFolder(index));
     }
 
     if (logging) {
@@ -314,18 +400,30 @@ public class MberNotifier extends Notifier
     return success;
   }
 
-  private String resolveArtifactFolder(AbstractBuild build, BuildListener listener)
+  private String resolveArtifactFolder(AbstractBuild build, BuildListener listener, final int index)
   {
-    return resolveEnvironmentVariables(build, listener, getArtifactFolder());
+    return resolveEnvironmentVariables(build, listener, getArtifactFolder(index));
   }
 
-  private FilePath[] findBuildArtifacts(final AbstractBuild build, final BuildListener listener)
+  private FilePath[] findBuildArtifacts(final AbstractBuild build, final BuildListener listener, final int index)
   {
-    String artifactGlob = resolveEnvironmentVariables(build, listener, getBuildArtifacts());
+    String artifactGlob = resolveEnvironmentVariables(build, listener, getBuildArtifacts(index));
     if (artifactGlob == null || artifactGlob.isEmpty()) {
       return new FilePath[0];
     }
 
+    // Version 1.2 supports optionally linking artifacts instead of uploading them. Skip resolving
+    // links as if they're relative to the workspace, since we can't know if they're absolute or not.
+    if (isLinkToLocalFiles(index)) {
+      ArrayList<FilePath> links = new ArrayList<FilePath>();
+      String[] globs = artifactGlob.split("\\s+");
+      for (String glob : globs) {
+        links.add(new FilePath(new File(glob)));
+      }
+      return links.toArray(new FilePath[0]);
+    }
+
+    // Versions prior to 1.2 only support uploading files relative to the workspace.
     try {
       ArrayList<FilePath> artifacts = new ArrayList<FilePath>();
       String[] globs = artifactGlob.split("\\s+");
@@ -340,17 +438,24 @@ public class MberNotifier extends Notifier
     }
   }
 
-  private Map<FilePath, String> findBuildArtifactFolders(final AbstractBuild build, final BuildListener listener, final FilePath[] artifacts)
+  private Map<FilePath, String> findBuildArtifactFolders(final AbstractBuild build, final BuildListener listener, final FilePath[] artifacts, final int index)
   {
+    // Version 1.2 supports optionally linking artifacts instead of uploading them.
+    final boolean isLink = isLinkToLocalFiles(index);
+
     // Artifact paths are relative to the workspace, and keep their folder structure when uploaded to Mber.
     // Since the slave and master might be running on different OSes, we normalize the folder name to slashes.
-    File base = new File(resolveArtifactFolder(build, listener));
+    // Links upload directly to the base artifact folder since their folder structure is unkown.
+    File base = new File(resolveArtifactFolder(build, listener, index));
     String workspace = build.getWorkspace().getRemote();
     HashMap namedArtifacts = new HashMap();
     for (FilePath path : artifacts) {
       if (path != null) {
-        String name = path.getRemote().replace(workspace, "");
-        name = (new File(base, name)).getPath();
+        String name = (new File(base, File.pathSeparator)).getPath();
+        if (!isLink) {
+          name = path.getRemote().replace(workspace, "");
+          name = (new File(base, name)).getPath();
+        }
         name = name.replace("\\", "/");
         name = name.substring(0, name.lastIndexOf("/"));
         namedArtifacts.put(path, name);
@@ -372,7 +477,7 @@ public class MberNotifier extends Notifier
   private MberClient makeMberClient()
   {
     if (mberConfig == null) {
-      return new MberClient(getDescriptor().getMberUrl(), getApplication());
+      return new MberClient(getMberUrl(), getApplication());
     }
     return new MberClient(this.mberConfig);
   }
@@ -447,15 +552,16 @@ public class MberNotifier extends Notifier
     JSONObject testResults = downloadTestResults(build, testResultAction);
 
     log(listener, "Uploading test results to Mber");
-
-    JSONObject response = makeArtifactFolder(build, listener, mber, false);
+    // Test results go into the first available artifact upload block, hence the 0 index.
+    // If no upload block is defined, they'll go into the default upload folder.
+    JSONObject response = makeArtifactFolder(build, listener, mber, false, 0);
     if (!response.getString("status").equals("Success")) {
       log(listener, response.getString("error"));
       return;
     }
 
     String uploadDirectoryId = response.getString("directoryId");
-    String[] tags = getUploadTags(build, listener, "tests.json");
+    String[] tags = getUploadTags(build, listener, "tests.json", 0);
 
     response = mber.upload(testResults, uploadDirectoryId, "tests.json", tags);
     if (response.getString("status").equals("Duplicate")) {
@@ -477,6 +583,8 @@ public class MberNotifier extends Notifier
   {
     // Clear the old call history. The notifier persists on a per-job basis.
     clearCallHistory(build);
+    // Clear the cached Mber config. It will have build IDs and like from previous runs.
+    this.mberConfig = null;
 
     MberClient mber = makeMberClient();
     mber.setListener(listener);
@@ -497,7 +605,9 @@ public class MberNotifier extends Notifier
     String mberBuildDescription = getMberBuildDescription(build, listener);
     log(listener, "Creating Mber build "+mberBuildName);
     log(listener, "Setting Mber build status to "+BuildStatus.RUNNING.toString());
-    response = mber.mkbuild(mberBuildName, mberBuildDescription, build.getId(), BuildStatus.RUNNING);
+
+    // Use the build's URL as the alias. The getId() function is not guaranteed to return a unique value.
+    response = mber.mkbuild(mberBuildName, mberBuildDescription, build.getUrl(), BuildStatus.RUNNING);
     if (!response.getString("status").equals("Success")) {
       return fail(build, listener, mber, response.getString("error"));
     }
@@ -514,37 +624,46 @@ public class MberNotifier extends Notifier
     MberClient mber = makeMberClient();
     mber.setListener(listener);
 
-    if (!this.uploadArtifacts || isFailedBuild(build)) {
+    if (!isUploadArtifacts() || isFailedBuild(build)) {
       return done(build, listener, mber);
-    }
-
-    FilePath[] artifacts = findBuildArtifacts(build, listener);
-    if (artifacts.length == 0) {
-      return fail(build, listener, mber, "No build artifacts found in "+getBuildArtifacts());
-    }
-
-    JSONObject response = makeArtifactFolder(build, listener, mber, true);
-    if (!response.getString("status").equals("Success")) {
-      return fail(build, listener, mber, response.getString("error"));
     }
 
     JSONArray errors = new JSONArray();
 
-    Map<FilePath, String> buildArtifactFolders = findBuildArtifactFolders(build, listener, artifacts);
-    Iterator<Map.Entry<FilePath, String>> folderItr = buildArtifactFolders.entrySet().iterator();
-    while (folderItr.hasNext()) {
-      Map.Entry<FilePath, String> artifact = folderItr.next();
-      FilePath path = artifact.getKey();
-      String folder = artifact.getValue();
-      String[] tags = getUploadTags(build, listener, path);
-      log(listener, "Uploading artifact "+path.getRemote());
-      response = mber.mkpath(folder);
-      String folderId = MberJSON.getString(response, "directoryId");
-      if (!folderId.isEmpty()) {
-        response = mber.upload(path, folderId, path.getName(), tags, isOverwriteExistingFiles());
+    for (int index = 0; index < getUploadDestinations().size(); ++index) {
+      FilePath[] artifacts = findBuildArtifacts(build, listener, index);
+      if (artifacts.length == 0) {
+        errors.add("No build artifacts found in "+getBuildArtifacts(0));
       }
+
+      JSONObject response = makeArtifactFolder(build, listener, mber, true, index);
       if (!response.getString("status").equals("Success")) {
-        errors.add(MberJSON.getString(response, "error"));
+        errors.add(response.getString("error"));
+      }
+
+      final boolean overwriteFiles = isOverwriteExistingFiles(index);
+      final boolean isLink = isLinkToLocalFiles(index);
+
+      Map<FilePath, String> buildArtifactFolders = findBuildArtifactFolders(build, listener, artifacts, index);
+      Iterator<Map.Entry<FilePath, String>> folderItr = buildArtifactFolders.entrySet().iterator();
+      while (folderItr.hasNext()) {
+        Map.Entry<FilePath, String> artifact = folderItr.next();
+        FilePath path = artifact.getKey();
+        String folder = artifact.getValue();
+        String[] tags = getUploadTags(build, listener, path, index);
+        log(listener, "Uploading artifact "+path.getRemote());
+        response = mber.mkpath(folder);
+        String folderId = MberJSON.getString(response, "directoryId");
+        if (!folderId.isEmpty()) {
+          if (!isLink) {
+            response = mber.upload(path, folderId, path.getName(), tags, overwriteFiles);
+          } else {
+            response = mber.link(path, folderId, path.getName(), tags, overwriteFiles);
+          }
+        }
+        if (!response.getString("status").equals("Success")) {
+          errors.add(MberJSON.getString(response, "error"));
+        }
       }
     }
 
@@ -558,13 +677,13 @@ public class MberNotifier extends Notifier
   @Override
   public boolean needsToRunAfterFinalized()
   {
-    return true;
+    return false;
   }
 
   @Override
   public BuildStepMonitor getRequiredMonitorService()
   {
-    return BuildStepMonitor.NONE;
+    return BuildStepMonitor.BUILD;
   }
 
   @Override
@@ -576,7 +695,10 @@ public class MberNotifier extends Notifier
   @Extension
   public static final class DescriptorImpl extends BuildStepDescriptor<Publisher>
   {
-    private String mberUrl;
+    private List<MberAccessProfile> accessProfiles = new ArrayList<MberAccessProfile>();
+
+    // Version 1.2 had a single global URL. Version 1.3 allows multiple access profiles.
+    transient private String mberUrl;
 
     public DescriptorImpl()
     {
@@ -584,14 +706,19 @@ public class MberNotifier extends Notifier
       load();
     }
 
-    public FormValidation doValidateLogin(@QueryParameter String application, @QueryParameter String username, @QueryParameter String password)
+    // This is called when old configurations are loaded and need to be translated
+    // into new formats. Do any kind of data migration here and return the fixed
+    // object. Remember to mark old private instance variables transient to ensure
+    // they're not saved.
+    public Object readResolve()
     {
-      MberClient mber = new MberClient(getMberUrl(), application);
-      JSONObject response = mber.login(username, Secret.fromString(password).getPlainText());
-      if (response.getString("status").equals("Success")) {
-        return FormValidation.ok("Success!");
+      // Version 1.2 had a single global URL. Version 1.3 allows multiple access profiles.
+      // If we're coming from version 1.2 set up the default profile with the configured URL.
+      if (this.mberUrl != null) {
+        MberAccessProfile defaultProfile = new MberAccessProfile("default", "", "", "", this.mberUrl);
+        this.accessProfiles.add(defaultProfile);
       }
-      return FormValidation.error(response.getString("error"));
+      return this;
     }
 
     @Override
@@ -614,40 +741,74 @@ public class MberNotifier extends Notifier
       return true;
     }
 
-    public FormValidation doCheckMberUrl(@QueryParameter String value)
+    // Resolve the configured Mber URL when the configuration for a notification is read.
+    public String resolveMberUrlForNotification()
     {
-      if (MberClient.isMberURL(value)) {
-        return FormValidation.ok();
+      // If this is a version 1.2 config, we'll have a mberUrl variable.
+      if (this.mberUrl != null && !this.mberUrl.isEmpty()) {
+        return this.mberUrl;
       }
-      return FormValidation.error("Invalid Mber URL. Clear the field and save the form to use the default value.");
-    }
-
-    public String getMberUrl()
-    {
-      if (mberUrl == null || mberUrl.isEmpty()) {
-        return getDefaultMberUrl();
+      // If we've already resolved the global configuration for a 1.2 config, we'll have a default profile.
+      final MberAccessProfile defaultProfile = getAccessProfile("default");
+      if (defaultProfile != null) {
+        final String url = defaultProfile.getUrl();
+        if (url != null && !url.isEmpty()) {
+          return url;
+        }
       }
-      return mberUrl;
+      // The user may have configured their own access profile. Use the first found profile with a valid URL.
+      for (MberAccessProfile profile : getAccessProfiles()) {
+        final String url = profile.getUrl();
+        if (url != null && !url.isEmpty()) {
+          return url;
+        }
+      }
+      // There are no configured profiles, so use the default URL.
+      return MberAccessProfile.getDefaultUrl();
     }
 
-    public void setMberUrl(final String url)
+    public List<MberAccessProfile> getAccessProfiles()
     {
-      mberUrl = url;
+      return this.accessProfiles;
     }
 
-    public String getDefaultMberUrl()
+    public void setAccessProfiles(final List<MberAccessProfile> accessProfiles)
     {
-      return "https://member.firepub.net";
+      this.accessProfiles = accessProfiles;
     }
 
-    public String getDefaultArtifactFolder()
+    // Get an access profile by name. Returns null if a profile with the given name isn't found.
+    public MberAccessProfile getAccessProfile(final String profileName)
     {
-      return "build/jenkins/${JOB_NAME}/${BUILD_NUMBER}";
+      for (MberAccessProfile profile : getAccessProfiles()) {
+        if (profile.getName().equals(profileName)) {
+          return profile;
+        }
+      }
+      return null;
     }
 
-    public String getDefaultArtifactTags()
+    // Overwrites values in an existing access profile with the same name.
+    // If no access profile with the same name is found, the new profile is added to the list.
+    public void setOrAddAccessProfile(final MberAccessProfile accessProfile)
     {
-      return "${JOB_NAME} ${BUILD_NUMBER}";
+      ListIterator<MberAccessProfile> profiles = getAccessProfiles().listIterator();
+      while (profiles.hasNext()) {
+        if (profiles.next().getName().equals(accessProfile.getName())) {
+          profiles.set(accessProfile);
+          return;
+        }
+      }
+      profiles.add(accessProfile);
+    }
+
+    // Called when the Mber access profile selector for a Jenkins job is populated.
+    public ListBoxModel doFillAccessProfileNameItems() {
+      ListBoxModel model = new ListBoxModel();
+      for (MberAccessProfile profile : getAccessProfiles()) {
+        model.add(profile.getName(), profile.getName());
+      }
+      return model;
     }
   }
 }

@@ -1,4 +1,4 @@
-<!--
+/*
 The Jenkins Mber Plugin is free software distributed under the terms of the MIT
 license (http://opensource.org/licenses/mit-license.html) reproduced here:
 
@@ -21,27 +21,24 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
--->
-<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
-  <style scoped="true">
-    [name="uploadDestinations"] .dd-handle {
-      font-weight: bold;
-    }
-  </style>
-  <f:entry title="${%Access Profile}" field="accessProfileName">
-    <f:select />
-  </f:entry>
-  <f:entry title="${%Build Name}" field="buildName">
-    <f:textbox />
-  </f:entry>
-  <f:entry title="${%Build Description}" field="buildDescription">
-    <f:textbox />
-  </f:entry>
-  <f:optionalBlock title="${%Upload console output}" field="uploadConsoleLog" checked="${instance == null or instance.isUploadConsoleLog()}" inline="true" />
-  <f:optionalBlock title="${%Upload test results}" field="uploadTestResults" checked="${instance == null or instance.isUploadTestResults()}" inline="true" />
-  <f:optionalBlock title="${%Upload build artifacts}" field="uploadArtifacts">
-    <f:entry>
-      <f:repeatableProperty header="${%Artifacts}" field="uploadDestinations" minimum="1" />
-    </f:entry>
-  </f:optionalBlock>
-</j:jelly>
+*/
+
+package org.jenkinsci.plugins.mber;
+import java.util.List;
+import org.kohsuke.stapler.DataBoundConstructor;
+
+public class UploadArtifactsFlag {
+
+  private final List<UploadArtifactsBlock> uploadDestinations;
+
+  @DataBoundConstructor
+  public UploadArtifactsFlag(List<UploadArtifactsBlock> uploadDestinations)
+  {
+    this.uploadDestinations = uploadDestinations;
+  }
+
+  public List<UploadArtifactsBlock> getUploadDestinations()
+  {
+    return uploadDestinations;
+  }
+}

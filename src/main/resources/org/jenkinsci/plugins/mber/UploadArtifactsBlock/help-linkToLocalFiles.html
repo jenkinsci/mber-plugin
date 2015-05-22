@@ -22,26 +22,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 -->
-<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
-  <style scoped="true">
-    [name="uploadDestinations"] .dd-handle {
-      font-weight: bold;
-    }
-  </style>
-  <f:entry title="${%Access Profile}" field="accessProfileName">
-    <f:select />
-  </f:entry>
-  <f:entry title="${%Build Name}" field="buildName">
-    <f:textbox />
-  </f:entry>
-  <f:entry title="${%Build Description}" field="buildDescription">
-    <f:textbox />
-  </f:entry>
-  <f:optionalBlock title="${%Upload console output}" field="uploadConsoleLog" checked="${instance == null or instance.isUploadConsoleLog()}" inline="true" />
-  <f:optionalBlock title="${%Upload test results}" field="uploadTestResults" checked="${instance == null or instance.isUploadTestResults()}" inline="true" />
-  <f:optionalBlock title="${%Upload build artifacts}" field="uploadArtifacts">
-    <f:entry>
-      <f:repeatableProperty header="${%Artifacts}" field="uploadDestinations" minimum="1" />
-    </f:entry>
-  </f:optionalBlock>
-</j:jelly>
+<div>
+  When checked, artifacts will be uploaded as links instead of files. Links
+  must be given as absolute paths in the "Files to upload" field. The artifact
+  a link references does not have to exist at creation time.
+</div>

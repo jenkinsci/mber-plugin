@@ -49,7 +49,7 @@ import org.jenkinsci.plugins.mber.LoggingFileEntity;
 
 public class HTTParty
 {
-  private final static String MBER_VERSION = "0.1.x";
+  private final static String MBER_VERSION = "2.0.x";
 
   static public class Call
   {
@@ -126,6 +126,22 @@ public class HTTParty
     request.setEntity(toStringEntity(data));
 
     return execute(request);
+  }
+
+  // Percent encode's a string as if it'd been passed JavaScript's encodeURIComponent.
+  public static String encodeURIComponent(final String component) throws UnsupportedEncodingException
+  {
+    // URLEncoder.encode encodes strings as if they'll be submitted in a form.
+    // This doesn't match up with JavaScript's encodeURIComponent behavior.
+    // So we fix up all the substitutions that need to happen.
+    String encoded = URLEncoder.encode(component, "UTF-8")
+      .replace("%7E", "~")
+      .replace("%21", "!")
+      .replace("%28", "(")
+      .replace("%29", ")")
+      .replace("%27", "'")
+    ;
+    return encoded;
   }
 
   private static Call execute(final HttpUriRequest request) throws IOException

@@ -23,25 +23,25 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 -->
 <j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
-  <style scoped="true">
-    [name="uploadDestinations"] .dd-handle {
-      font-weight: bold;
-    }
-  </style>
-  <f:entry title="${%Access Profile}" field="accessProfileName">
-    <f:select />
-  </f:entry>
-  <f:entry title="${%Build Name}" field="buildName">
+  <f:entry title="${%Name}" field="name">
     <f:textbox />
   </f:entry>
-  <f:entry title="${%Build Description}" field="buildDescription">
+  <f:entry title="${%Application}" field="application">
     <f:textbox />
   </f:entry>
-  <f:optionalBlock title="${%Upload console output}" field="uploadConsoleLog" checked="${instance == null or instance.isUploadConsoleLog()}" inline="true" />
-  <f:optionalBlock title="${%Upload test results}" field="uploadTestResults" checked="${instance == null or instance.isUploadTestResults()}" inline="true" />
-  <f:optionalBlock title="${%Upload build artifacts}" field="uploadArtifacts">
-    <f:entry>
-      <f:repeatableProperty header="${%Artifacts}" field="uploadDestinations" minimum="1" />
-    </f:entry>
-  </f:optionalBlock>
+  <f:entry title="${%Username}" field="username">
+    <f:textbox />
+  </f:entry>
+  <f:entry title="${%Password}" field="password">
+    <f:password />
+  </f:entry>
+  <f:entry title="${%URL}" field="url">
+    <f:textbox default="${descriptor.getDefaultUrl()}" />
+  </f:entry>
+  <f:validateButton title="${%Test Connection}" progress="${%Connecting...}" method="validateLogin" with="application,username,password,url" />
+  <f:entry>
+    <div align="right" class="show-if-not-only">
+      <f:repeatableDeleteButton value="${%Delete Mber Access Profile}" />
+    </div>
+  </f:entry>
 </j:jelly>

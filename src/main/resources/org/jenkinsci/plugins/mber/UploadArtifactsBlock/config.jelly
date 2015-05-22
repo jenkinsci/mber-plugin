@@ -23,25 +23,24 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 -->
 <j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
-  <style scoped="true">
-    [name="uploadDestinations"] .dd-handle {
-      font-weight: bold;
-    }
-  </style>
-  <f:entry title="${%Access Profile}" field="accessProfileName">
-    <f:select />
+  <f:entry title="${%Files to upload}" field="buildArtifacts">
+    <f:expandableTextbox />
   </f:entry>
-  <f:entry title="${%Build Name}" field="buildName">
-    <f:textbox />
+  <f:entry title="${%Destination folder}" field="artifactFolder">
+    <f:textbox default="${descriptor.getDefaultArtifactFolder()}" />
   </f:entry>
-  <f:entry title="${%Build Description}" field="buildDescription">
-    <f:textbox />
+  <f:entry title="${%Tags}" field="artifactTags">
+    <f:expandableTextbox />
   </f:entry>
-  <f:optionalBlock title="${%Upload console output}" field="uploadConsoleLog" checked="${instance == null or instance.isUploadConsoleLog()}" inline="true" />
-  <f:optionalBlock title="${%Upload test results}" field="uploadTestResults" checked="${instance == null or instance.isUploadTestResults()}" inline="true" />
-  <f:optionalBlock title="${%Upload build artifacts}" field="uploadArtifacts">
-    <f:entry>
-      <f:repeatableProperty header="${%Artifacts}" field="uploadDestinations" minimum="1" />
-    </f:entry>
-  </f:optionalBlock>
+  <f:entry field="overwriteExistingFiles">
+    <f:checkbox title="${%Overwrite existing files}" />
+  </f:entry>
+  <f:entry field="linkToLocalFiles">
+    <f:checkbox title="${%Link to local files}" />
+  </f:entry>
+  <f:entry>
+    <div align="right" class="show-if-not-only">
+      <f:repeatableDeleteButton />
+    </div>
+  </f:entry>
 </j:jelly>

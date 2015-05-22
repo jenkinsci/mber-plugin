@@ -76,6 +76,7 @@ public class MberClient
   private String applicationId;
   private String projectId;
   private String buildId;
+  private String buildAlias;
   private JSONArray buildStatus;
   private BuildListener listener;
   private final List<HTTParty.Call> callHistory;
@@ -96,6 +97,7 @@ public class MberClient
     setOrClearApplicationId(json);
     setOrClearProjectId(json);
     setOrClearBuildId(json);
+    setOrClearBuildAlias(json);
     setOrClearBuildStatus(json);
   }
 
@@ -108,6 +110,7 @@ public class MberClient
     json.put("applicationId", getApplicationId());
     json.put("projectId", getProjectId());
     json.put("buildId", getBuildId());
+    json.put("buildAlias", getBuildAlias());
     json.put("buildStatus", getBuildStatus());
     return json;
   }
@@ -165,6 +168,37 @@ public class MberClient
     return jsonResponse;
   }
 
+  // Creates a link to the given file in Mber Drive. An existing link with a
+  // matching name can optionally be overwritten. In the case of an overwrite,
+  // any new tags will be added to the existing link's tags.
+  public JSONObject link(final FilePath path, final String directory, final String name, final String[] tags, final boolean overwrite)
+  {
+    JSONObject data = new JSONObject();
+    data.put("directoryId", directory);
+    data.put("name", name);
+    data.put("uri", path.getRemote());
+    data.put("tags", tags);
+    data.put("access_token", getAccessToken());
+    data.put("transactionId", generateTransactionId());
+    JSONObject response = post("service/json/data/documentlink", data);
+
+    // Handle duplicates by reading the directory and finding the file with the matching name.
+    if (response.getString("status").equals("Duplicate") && overwrite) {
+      String documentId = listFiles(directory).get(name);
+      if (documentId != null && !documentId.isEmpty()) {
+        // DocumentLink.Update has a "tagsToAdd" field instead of "tags".
+        data.put("tagsToAdd", tags);
+        data.remove("tags");
+        response = put("service/json/data/documentlink", documentId, data);
+      } else {
+        final String error = String.format("Duplicate link with name %s in directory %s wasn't found.", name, directory);
+        response = MberJSON.failed(error);
+      }
+    }
+
+    return response;
+  }
+
   public JSONObject upload(final String path, final String directory, final String name, final String[] tags, final boolean overwrite)
   {
     return upload(new FilePath(new File(path)), directory, name, tags, overwrite);
@@ -193,7 +227,7 @@ public class MberClient
             while (itr.hasNext()) {
               JSONObject item = itr.next();
               if (item.has("name") && item.getString("name").equals(name) && item.has("documentId")) {
-                response = put("service/json/data/upload/"+item.getString("documentId"), data);
+                response = put("service/json/data/upload/", item.getString("documentId"), data);
                 if (response.getString("status").equals("Success")) {
                   response = path.act(new FileUploadCallable(response.getString("url"), getListener()));
                 }
@@ -236,7 +270,7 @@ public class MberClient
     data.put("timeUnit", "MINUTES");
     data.put("startDate", startDate.getTime());
     data.put("access_token", getAccessToken());
-    return get("service/json/metrics/countovertime", data);
+    return get("service/json/metrics/countovertime", "", data);
   }
 
   public JSONObject publishTestResults(final JSONObject json)
@@ -325,7 +359,7 @@ public class MberClient
   {
     JSONObject data = new JSONObject();
     data.put("access_token", getAccessToken());
-    JSONObject response = get("service/json/build/project", data);
+    JSONObject response = get("service/json/build/project", "", data);
     Map<String, String> projects = new HashMap<String, String>();
     if (response.has("results")) {
       JSONArray results = response.getJSONArray("results");
@@ -351,10 +385,14 @@ public class MberClient
   public JSONObject mkbuild(final String name, final String description, final String alias, final BuildStatus... statuses)
   {
     recordBuildStatus(statuses);
+    setBuildAlias(alias);
     JSONObject data = new JSONObject();
     data.put("name", name);
     // Setting the alias creates a one-to-one mapping between Jenkins Builds and Mber Builds.
-    data.put("alias", alias);
+    // An empty alias is valid in Mber, but likely to collide. Avoid it.
+    if (alias != null && !alias.isEmpty()) {
+      data.put("alias", alias);
+    }
     if (description != null && !description.isEmpty()) {
       data.put("description", description);
     }
@@ -389,11 +427,16 @@ public class MberClient
 
   private JSONObject updateBuild(JSONObject data)
   {
+    // An empty alias is valid in Mber, but likely to collide. Avoid it.
+    final String alias = getBuildAlias();
+    if (alias != null && !alias.isEmpty()) {
+      data.put("alias", alias);
+    }
     data.put("buildId", getBuildId());
     data.put("status", getBuildStatus());
     data.put("access_token", getAccessToken());
     data.put("transactionId", generateTransactionId());
-    return put("service/json/build/build/"+getBuildId(), data);
+    return put("service/json/build/build/", getBuildId(), data);
   }
 
   private JSONObject mkdir(final String folder, final String parent, final String alias)
@@ -404,18 +447,17 @@ public class MberClient
     data.put("alias", alias);
     data.put("access_token", getAccessToken());
     data.put("transactionId", generateTransactionId());
-    
-    // Check double-ticked aliases first
+
+    // Check for old directories whose aliases started with a tick first.
     JSONObject result = readdir(String.format("'%s", alias));
-    if (result.getString("status").equals("Success")) {
-      result.put("directoryId", alias);
-    } else {
+    if (!result.getString("status").equals("Success")) {
+      // The directory doesn't exist, so try to create it.
       result = post("service/json/data/directory", data);
       if (result.getString("status").equals("Duplicate")) {
+        // The directory already exists, so try to read it by alias.
         result = readdir(alias);
-        if (result.getString("status").equals("Success")) {
-          result.put("directoryId", alias);
-        } else {
+        if (!result.getString("status").equals("Success")) {
+          // Directory wasn't found by alias, but exists, so look it up by name.
           String folderId = lsdir(parent).get(folder);
           if (folderId != null && !folderId.isEmpty()) {
             result.put("status", "Success");
@@ -423,8 +465,13 @@ public class MberClient
           }
         }
       }
-
     }
+
+    // Resolve the directory ID out of read responses.
+    if (result.getString("status").equals("Success") && !result.has("directoryId") && result.has("result")) {
+      result.put("directoryId", result.getJSONObject("result").getString("directoryId"));
+    }
+
     return result;
   }
 
@@ -435,7 +482,7 @@ public class MberClient
     if (!isUUID(folder)) {
       id = makeAlias(folder);
     }
-    return get("service/json/data/directory/" + id, data);
+    return get("service/json/data/directory/", id, data);
   }
 
   private Map<String, String> lsdir(final String folder)
@@ -456,11 +503,32 @@ public class MberClient
     return directories;
   }
 
-  private JSONObject get(final String endpoint, final JSONObject data)
+  // Returns a map from name to UUID of all the files in a folder.
+  // Mber doesn't allow duplicate file names in a folder, so this is safe.
+  private Map<String, String> listFiles(final String folder)
+  {
+    JSONObject response = readdir(folder);
+    Map<String, String> documents = new HashMap<String, String>();
+    if (response.has("result")) {
+      JSONObject result = response.getJSONObject("result");
+      if (result.has("documents")) {
+        JSONArray files = result.getJSONArray("documents");
+        Iterator<JSONObject> itr = files.iterator();
+        while (itr.hasNext()) {
+          JSONObject item = itr.next();
+          documents.put(item.getString("name"), item.getString("documentId"));
+        }
+      }
+    }
+    return documents;
+  }
+
+  private JSONObject get(final String service, final String resource, final JSONObject data)
   {
     String mberResponse = "";
     try {
-      HTTParty.Call call = HTTParty.get(getMberUrl(endpoint), data);
+      String endpoint = getMberUrl(service) + HTTParty.encodeURIComponent(resource);
+      HTTParty.Call call = HTTParty.get(endpoint, data);
       recordCall(call);
       mberResponse = call.body;
       return parseResponse(mberResponse);
@@ -479,11 +547,12 @@ public class MberClient
     }
   }
 
-  private JSONObject put(final String endpoint, final JSONObject data)
+  private JSONObject put(final String service, final String resource, final JSONObject data)
   {
     String mberResponse = "";
     try {
-      HTTParty.Call call = HTTParty.put(getMberUrl(endpoint), data);
+      String endpoint = getMberUrl(service) + HTTParty.encodeURIComponent(resource);
+      HTTParty.Call call = HTTParty.put(endpoint, data);
       recordCall(call);
       mberResponse = call.body;
       return parseResponse(mberResponse);
@@ -658,6 +727,26 @@ public class MberClient
     }
     else {
       buildId = "";
+    }
+  }
+
+  private String getBuildAlias()
+  {
+    return this.buildAlias;
+  }
+
+  private void setBuildAlias(final String alias)
+  {
+    this.buildAlias = alias;
+  }
+
+  private void setOrClearBuildAlias(final JSONObject json)
+  {
+    if (json.has("buildAlias")) {
+      setBuildAlias(json.getString("buildAlias"));
+    }
+    else {
+      setBuildAlias("");
     }
   }
 

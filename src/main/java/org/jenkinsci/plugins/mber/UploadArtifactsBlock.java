@@ -24,22 +24,40 @@ THE SOFTWARE.
 */
 
 package org.jenkinsci.plugins.mber;
+import hudson.Extension;
+import hudson.model.Describable;
+import hudson.model.Descriptor;
+import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 
-public class UploadArtifactsBlock
+public class UploadArtifactsBlock implements Describable<UploadArtifactsBlock>
 {
+  public static String getDefaultArtifactFolder()
+  {
+    return "build/jenkins/${JOB_NAME}/${BUILD_NUMBER}";
+  }
+
+  public static String getDefaultArtifactTags()
+  {
+    return "${JOB_NAME} ${BUILD_NUMBER}";
+  }
+
   private final String buildArtifacts;
   private final String artifactFolder;
   private final String artifactTags;
   private final boolean overwriteExistingFiles;
 
+  // Version 1.2 supports linking to local files instead of uploading them.
+  private boolean linkToLocalFiles = false;
+
   @DataBoundConstructor
-  public UploadArtifactsBlock(String buildArtifacts, String artifactFolder, String artifactTags, boolean overwriteExistingFiles)
+  public UploadArtifactsBlock(String buildArtifacts, String artifactFolder, String artifactTags, boolean overwriteExistingFiles, boolean linkToLocalFiles)
   {
     this.buildArtifacts = buildArtifacts;
     this.artifactFolder = artifactFolder;
     this.artifactTags = artifactTags;
     this.overwriteExistingFiles = overwriteExistingFiles;
+    this.linkToLocalFiles = linkToLocalFiles;
   }
 
   public String getBuildArtifacts()
@@ -49,16 +67,48 @@ public class UploadArtifactsBlock
 
   public String getArtifactFolder()
   {
+    if (artifactFolder == null || artifactFolder.isEmpty()) {
+      return UploadArtifactsBlock.getDefaultArtifactFolder();
+    }
     return artifactFolder;
   }
 
   public String getArtifactTags()
   {
+    if (artifactTags == null || artifactTags.isEmpty()) {
+      return UploadArtifactsBlock.getDefaultArtifactTags();
+    }
     return artifactTags;
   }
 
   public boolean isOverwriteExistingFiles()
   {
     return overwriteExistingFiles;
+  }
+
+  public boolean isLinkToLocalFiles()
+  {
+    return linkToLocalFiles;
+  }
+
+  public Descriptor<UploadArtifactsBlock> getDescriptor()
+  {
+    return Jenkins.getInstance().getDescriptor(UploadArtifactsBlock.class);
+  }
+
+  @Extension
+  public static class DescriptorImpl extends Descriptor<UploadArtifactsBlock>
+  {
+    @Override
+    public String getDisplayName()
+    {
+      // Unused. Provided for compatibility with f:repeatableProperty in the jelly config.
+      return "";
+    }
+
+    public String getDefaultArtifactFolder()
+    {
+      return UploadArtifactsBlock.getDefaultArtifactFolder();
+    }
   }
 }

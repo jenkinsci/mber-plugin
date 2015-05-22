@@ -27,6 +27,7 @@ package com.mber.client;
 import com.github.tomakehurst.wiremock.client.WireMock;
 import com.github.tomakehurst.wiremock.junit.WireMockRule;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
+import hudson.FilePath;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -58,6 +59,7 @@ public class MberClientTest extends MberTest
   {
     JSONObject request = null;
     JSONObject response = null;
+    JSONObject result = null;
 
     // Provide a generic NotAuthorized catch all for OAuth.
     response = new JSONObject();
@@ -105,6 +107,23 @@ public class MberClientTest extends MberTest
       )
     );
 
+    // Provide an explicit Duplicate for directory creation when a test alias is used.
+    request = new JSONObject();
+    request.put("access_token", "MOCKACCESSTOKEN");
+    request.put("alias", "jenkins-mber-plugin/test/");
+
+    response = new JSONObject();
+    response.put("status", "Duplicate");
+
+    WireMock.stubFor(WireMock.post(WireMock.urlEqualTo("/service/json/data/directory/"))
+      .withRequestBody(WireMock.equalToJson(request.toString(), JSONCompareMode.LENIENT))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
+
     // Provide an explicit Success for directory creation when the mock token is used.
     request = new JSONObject();
     request.put("access_token", "MOCKACCESSTOKEN");
@@ -116,6 +135,36 @@ public class MberClientTest extends MberTest
     WireMock.stubFor(WireMock.post(WireMock.urlEqualTo("/service/json/data/directory/"))
       .withRequestBody(WireMock.equalToJson(request.toString(), JSONCompareMode.LENIENT))
       .withRequestBody(WireMock.containing("\"alias\":\"jenkins"))
+      .atPriority(2)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
+
+    // Provide an explict Success for directory read when a double-tick alias is used.
+    response = new JSONObject();
+    response.put("status", "Success");
+    result = new JSONObject();
+    result.put("directoryId", "MOCKDIRECTORYID_AAAAAA");
+    response.put("result", result);
+
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/directory/''jenkins-mber-plugin%2F?access_token=MOCKACCESSTOKEN"))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
+
+    // Provide an explict Success for directory read when a normal alias is used.
+    response = new JSONObject();
+    response.put("status", "Success");
+    result = new JSONObject();
+    result.put("directoryId", "MOCKDIRECTORYID_AAAAAA");
+    response.put("result", result);
+
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/directory/'jenkins-mber-plugin%2Ftest%2F?access_token=MOCKACCESSTOKEN"))
       .atPriority(1)
       .willReturn(WireMock.aResponse()
         .withStatus(200)
@@ -126,9 +175,11 @@ public class MberClientTest extends MberTest
     // Provide an explicit Success for directory read when the mock token and directory are used.
     response = new JSONObject();
     response.put("status", "Success");
-    response.put("directoryId", "MOCKDIRECTORYID_AAAAAA");
+    result = new JSONObject();
+    result.put("directoryId", "MOCKDIRECTORYID_AAAAAA");
+    response.put("result", result);
 
-    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/directory/MOCKDIRECTORYID_AAAAAA/?access_token=MOCKACCESSTOKEN"))
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/directory/MOCKDIRECTORYID_AAAAAA?access_token=MOCKACCESSTOKEN"))
       .atPriority(1)
       .willReturn(WireMock.aResponse()
         .withStatus(200)
@@ -217,7 +268,7 @@ public class MberClientTest extends MberTest
     response = new JSONObject();
     response.put("status", "Success");
 
-    WireMock.stubFor(WireMock.put(WireMock.urlEqualTo("/service/json/build/build/MOCKBUILDID/"))
+    WireMock.stubFor(WireMock.put(WireMock.urlEqualTo("/service/json/build/build/MOCKBUILDID"))
       .withRequestBody(WireMock.equalToJson(request.toString(), JSONCompareMode.LENIENT))
       .atPriority(1)
       .willReturn(WireMock.aResponse()
@@ -376,6 +427,111 @@ public class MberClientTest extends MberTest
         .withBody(response.toString())
       )
     );
+
+    // Provide a generic Failed catch all for document link creation.
+    response = new JSONObject();
+    response.put("status", "Failed");
+    response.put("message", "Failed to create a document link");
+
+    WireMock.stubFor(WireMock.post(WireMock.urlEqualTo("/service/json/data/documentlink/"))
+      .atPriority(5)
+      .willReturn(WireMock.aResponse()
+        .withStatus(406)
+        .withBody(response.toString())
+      )
+    );
+ 
+    // Provide an explicit NotFound for document link creation when an invalid directory ID is used.
+    request = new JSONObject();
+    request.put("access_token", "MOCKACCESSTOKEN");
+    request.put("directoryId", "AAAAAAAAAAAAAAAAAAAAAA");
+
+    response = new JSONObject();
+    response.put("status", "NotFound");
+    response.put("message", "Linked 0 bytes");
+
+    WireMock.stubFor(WireMock.post(WireMock.urlEqualTo("/service/json/data/documentlink/"))
+      .withRequestBody(WireMock.equalToJson(request.toString(), JSONCompareMode.LENIENT))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(404)
+        .withBody(response.toString())
+      )
+    );
+
+    // Provide an explicit Success for document link creation when the mock token and directory ID are used.
+    request = new JSONObject();
+    request.put("access_token", "MOCKACCESSTOKEN");
+    request.put("directoryId", "MOCKDIRECTORYID_AAAAAA");
+
+    response = new JSONObject();
+    response.put("status", "Success");
+    response.put("documentLinkId", "MOCKDOCUMENTLINKID");
+
+    WireMock.stubFor(WireMock.post(WireMock.urlEqualTo("/service/json/data/documentlink/"))
+      .inScenario("Links")
+      .whenScenarioStateIs(Scenario.STARTED)
+      .withRequestBody(WireMock.equalToJson(request.toString(), JSONCompareMode.LENIENT))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      ).willSetStateTo("Duplicate")
+    );
+
+    response = new JSONObject();
+    response.put("status", "Duplicate");
+
+    WireMock.stubFor(WireMock.post(WireMock.urlEqualTo("/service/json/data/documentlink/"))
+      .inScenario("Links")
+      .whenScenarioStateIs("Duplicate")
+      .withRequestBody(WireMock.equalToJson(request.toString(), JSONCompareMode.LENIENT))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
+
+    // Provide an explicit Success for directory read when mocking duplicate links.
+    response = new JSONObject();
+    response.put("status", "Success");
+    JSONObject document = new JSONObject();
+    document.put("name", "exist.txt");
+    document.put("documentId", "MOCKDUPLICATELINKID");
+    JSONArray documents = new JSONArray();
+    documents.add(document);
+    result = new JSONObject();
+    result.put("documents", documents);
+    result.put("directoryId", "MOCKDIRECTORYID_AAAAAA");
+    response.put("result", result);
+
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/directory/MOCKDIRECTORYID_AAAAAA?access_token=MOCKACCESSTOKEN"))
+      .inScenario("Links")
+      .whenScenarioStateIs("Duplicate")
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
+
+    // Provide an explicit Success for document link update when the mock token and document ID are used.
+    request = new JSONObject();
+    request.put("access_token", "MOCKACCESSTOKEN");
+
+    response = new JSONObject();
+    response.put("status", "Success");
+
+    WireMock.stubFor(WireMock.put(WireMock.urlEqualTo("/service/json/data/documentlink/MOCKDUPLICATELINKID"))
+      .inScenario("Links")
+      .withRequestBody(WireMock.equalToJson(request.toString(), JSONCompareMode.LENIENT))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
   }
 
   @Test
@@ -450,6 +606,11 @@ public class MberClientTest extends MberTest
     Stack<JSONObject> results = new Stack<JSONObject>();
 
     try {
+      // The mock is structured so that:
+      // jenkins-mber-plugin exists with the alias: 'jenkins-mber-plugin/
+      // jenkins-mber-plugin/test exists with the alias: jenkins-mber-plugin/test/
+      // jenkins-mber-plugin/test/create does not exist
+
       // Fails with an error message unless logged in.
       results.push(mber.mkpath("jenkins-mber-plugin/test/create"));
       Assert.assertEquals("Created folder unexpectedly", "Failed", results.peek().getString("status"));
@@ -469,8 +630,8 @@ public class MberClientTest extends MberTest
       // There should be nine calls.
       // * 2 from the previous failed attempt
       // * 1 to get the access token
-      // * 3 to check the aliases
-      // * 3 to create the folders
+      // * 4 to check the aliases
+      // * 2 to create the folders
       Assert.assertEquals("Successful directory create calls where not recorded", 9, mber.getCallHistory().size());
     }
     finally {
@@ -596,6 +757,49 @@ public class MberClientTest extends MberTest
       results.push(mber.mkpath("jenkins-mber-plugin/test/upload"));
       results.push(mber.upload(tests, results.peek().getString("directoryId"), "some-tests.json", tags));
       Assert.assertEquals("Failed to upload non-empty JSON", "Success", results.peek().getString("status"));
+    }
+    finally {
+      mberCleanup(results, mber.getURL(), "data/directory", "directoryId");
+    }
+  }
+
+  @Test
+  public void linksFiles() throws Exception
+  {
+    checkMberVariables();
+    MberClient mber = new MberClient(getMberUrl(), getMberApplicationId());
+    Stack<JSONObject> results = new Stack<JSONObject>();
+
+    final FilePath linkPath = new FilePath(new File("file://this/file/does/not/exist.txt"));
+    final String linkName = "exist.txt";
+    final String[] tags = { "test", "link" };
+
+    try {
+      // Fails with an error message unless logged in.
+      results.push(mber.link(linkPath, "jenkins-mber-plugin/test/link", linkName, tags, false));
+      Assert.assertEquals("Linked file unexpectedly while not logged in", "Failed", results.peek().getString("status"));
+      assertNotEmpty("No error message found when linking a file while not logged in", results.peek().getString("error"));
+
+      // Fails with an error message if the directory ID's invalid.
+      results.push(mber.login(getMberUsername(), getMberPassword()));
+      results.push(mber.link(linkPath, "AAAAAAAAAAAAAAAAAAAAAA", linkName, tags, false));
+      Assert.assertEquals("Linked file unexpectedly with an invalid directory", "NotFound", results.peek().getString("status"));
+      assertNotEmpty("No error message found when linking a file with an invalid directory", results.peek().getString("error"));
+
+      // Succeeds when logged in and the directory ID's valid.
+      results.push(mber.mkpath("jenkins-mber-plugin/test/link"));
+      String uploadFolder = results.peek().getString("directoryId");
+      results.push(mber.link(linkPath, uploadFolder, linkName, tags, false));
+      Assert.assertEquals("Failed to link file while logged in with a valid directory", "Success", results.peek().getString("status"));
+
+      // Fails with an error message if the file already exists.
+      results.push(mber.link(linkPath, uploadFolder, linkName, tags, false));
+      Assert.assertEquals("Updated link unexpectedly", "Duplicate", results.peek().getString("status"));
+      assertNotEmpty("No error message found when linking a file that already exists", results.peek().getString("error"));
+
+      // Succeeds if the file already exists and is being overwritten.
+      results.push(mber.link(linkPath, uploadFolder, linkName, tags, true));
+      Assert.assertEquals("Failed to update file when linking a file that already exists", "Success", results.peek().getString("status"));      
     }
     finally {
       mberCleanup(results, mber.getURL(), "data/directory", "directoryId");

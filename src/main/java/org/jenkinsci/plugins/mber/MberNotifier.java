@@ -51,6 +51,7 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.Map;
 import java.util.HashMap;
+import jenkins.model.Jenkins;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
@@ -810,5 +811,26 @@ public class MberNotifier extends Notifier
       }
       return model;
     }
+  }
+
+  // Pass through method for filling out an access profile name drop down.
+  public static ListBoxModel getAccessProfileNameItems()
+  {
+    final MberNotifier.DescriptorImpl descriptor = (MberNotifier.DescriptorImpl)Jenkins.getInstance().getDescriptor(MberNotifier.class);
+    return descriptor.doFillAccessProfileNameItems();
+  }
+
+  // Pass through method for reading an explicit acccess profile from the descriptor.
+  public static MberAccessProfile getAccessProfile(final String profileName)
+  {
+    final MberNotifier.DescriptorImpl descriptor = (MberNotifier.DescriptorImpl)Jenkins.getInstance().getDescriptor(MberNotifier.class);
+    return descriptor.getAccessProfile(profileName);
+  }
+
+  // Pass through method for adding a new access profile.
+  public static void setOrAddAccessProfile(final MberAccessProfile accessProfile)
+  {
+    final MberNotifier.DescriptorImpl descriptor = (MberNotifier.DescriptorImpl)Jenkins.getInstance().getDescriptor(MberNotifier.class);
+    descriptor.setOrAddAccessProfile(accessProfile);
   }
 }

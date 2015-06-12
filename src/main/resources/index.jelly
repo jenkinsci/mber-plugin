@@ -23,5 +23,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 -->
 <div>
-  This is a plugin for notifying <a href="https://member.firepub.net">Mber</a> about Jenkins builds.
+  Integrates with <a href="http://mber.com/">Mber</a> to provide build
+  notification and artifact storage.
 </div>

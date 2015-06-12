@@ -2,6 +2,10 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 1.4.0 - 2015-06-12
+### Added
+- Ability to download files from Mber Drive.
+
 ## 1.3.0 - 2015-05-22
 ### Added
 - Ability to upload artifacts as document links.

@@ -30,6 +30,7 @@ sed -i 's/127.0.1.1/127.0.0.1/g' /etc/hosts
 wget -q -O - http://pkg.jenkins-ci.org/debian/jenkins-ci.org.key | apt-key add -
 echo deb http://pkg.jenkins-ci.org/debian binary/ | tee /etc/apt/sources.list.d/jenkins.list
 apt-get -q update
+apt-get -y install java7-runtime
 apt-get -y install jenkins
 SCRIPT
 

@@ -32,28 +32,32 @@ import hudson.remoting.VirtualChannel;
 import java.io.File;
 import net.sf.json.JSONObject;
 
-public class FileUploadCallable implements FilePath.FileCallable<JSONObject>
+public class FileUploadCallable implements FilePath.FileCallable<JSONObject>, LoggingOutputStream.Listener
 {
   private final String url;
   private final BuildListener listener;
+  private String fileName;
 
   public FileUploadCallable(String url)
   {
     this.url = url;
     this.listener = null;
+    this.fileName = null;
   }
 
   public FileUploadCallable(String url, BuildListener listener)
   {
     this.url = url;
     this.listener = listener;
+    this.fileName = null;
   }
 
   @Override
   public JSONObject invoke(File file, VirtualChannel channel)
   {
     try {
-      String response = HTTParty.put(this.url, file, this.listener).body;
+      this.fileName = file.getName();
+      String response = HTTParty.put(this.url, file, this).body;
       if (response != null && !response.isEmpty()) {
         return MberJSON.failed(response);
       }
@@ -62,8 +66,21 @@ public class FileUploadCallable implements FilePath.FileCallable<JSONObject>
       json.put("path", file.getAbsolutePath());
       return json;
     }
-    catch (Exception e) {
+    catch (final Exception e) {
       return MberJSON.failed(e);
+    }
+  }
+
+  @Override
+  public void logPercentComplete(final int percent)
+  {
+    log("Uploaded %d%% of %s", percent, this.fileName);
+  }
+
+  private void log(final String message, final Object... args)
+  {
+    if (this.listener != null && !message.isEmpty()) {
+      this.listener.getLogger().println(String.format(message, args));
     }
   }
 }

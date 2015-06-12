@@ -24,31 +24,25 @@ THE SOFTWARE.
 */
 
 package org.jenkinsci.plugins.mber;
-import hudson.model.BuildListener;
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
-import org.apache.http.entity.FileEntity;
+import hudson.model.FreeStyleProject;
+import org.junit.Test;
+import org.jvnet.hudson.test.HudsonTestCase;
 
-public class LoggingFileEntity extends FileEntity
-{
-  private final LoggingOutputStream.Listener listener;
-
-  public LoggingFileEntity(File file, LoggingOutputStream.Listener listener)
+public class MberDownloaderTest extends HudsonTestCase {
+  @Test
+  public void testConfigRoundtrip() throws Exception
   {
-    super(file);
-    this.listener = listener;
-  }
+    // Set up a global access profile so its name can be resolved by the build step's config.
+    final MberAccessProfile accessProfile = new MberAccessProfile("name", "application", "username", "password", "url");
+    MberNotifier.setOrAddAccessProfile(accessProfile);
 
-  @Override
-  public void writeTo(OutputStream outstream) throws IOException
-  {
-    LoggingOutputStream output = new LoggingOutputStream(outstream, listener, getContentLength());
-    try {
-      super.writeTo(output);
-    }
-    finally {
-      output.close();
-    }
+    // Add a new build step to the project and make sure its config saves and loads.
+    final FreeStyleProject project = createFreeStyleProject();
+    final MberDownloader before = new MberDownloader(accessProfile.getName(), "files", true, true, true, true);
+    project.getBuildersList().add(before);
+    configRoundtrip(project);
+    final MberDownloader after = project.getBuildersList().get(MberDownloader.class);
+    assertNotSame(before, after);
+    assertEqualDataBoundBeans(before, after);
   }
 }

@@ -42,6 +42,7 @@ import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import net.sf.json.JSONSerializer;
 import org.apache.commons.codec.binary.Base64;
+import org.jenkinsci.plugins.mber.FileDownloadCallable;
 import org.jenkinsci.plugins.mber.FileUploadCallable;
 
 public class MberClient
@@ -132,13 +133,7 @@ public class MberClient
 
   public String getApplication()
   {
-    if (isAlias(getRawApplication())) {
-      return getRawApplication();
-    }
-    if (isUUID(getRawApplication())) {
-      return getRawApplication();
-    }
-    return makeAlias(getRawApplication());
+    return resolveAliasOrUUID(getRawApplication());
   }
 
   public JSONObject login(final String username, final String password)
@@ -425,6 +420,28 @@ public class MberClient
     return updateBuild(data);
   }
 
+  public JSONObject findDocumentsWithTags(final String[] tags)
+  {
+    JSONObject data = new JSONObject();
+    data.put("tags", tags);
+    data.put("access_token", getAccessToken());
+    return get("service/json/data/", "document", data);
+  }
+
+  public JSONObject download(final FilePath path, final String documentAliasOrUUID, final boolean showProgress)
+  {
+    try {
+      final String documentId = resolveAliasOrUUID(documentAliasOrUUID);
+      final JSONObject data = new JSONObject();
+      data.put("access_token", getAccessToken());
+      final String downloadURL = getMberUrl("service/raw/data/download") + HTTParty.encodeURIComponent(documentId) + HTTParty.toQuery(data);
+      return path.act(new FileDownloadCallable(downloadURL, showProgress ? getListener() : null));
+    }
+    catch (final Exception e) {
+      return MberJSON.failed(e);
+    }
+  }
+
   private JSONObject updateBuild(JSONObject data)
   {
     // An empty alias is valid in Mber, but likely to collide. Avoid it.
@@ -483,6 +500,13 @@ public class MberClient
       id = makeAlias(folder);
     }
     return get("service/json/data/directory/", id, data);
+  }
+
+  public JSONObject readDocument(final String documentAliasOrUUID) {
+    final String documentId = resolveAliasOrUUID(documentAliasOrUUID);
+    JSONObject data = new JSONObject();
+    data.put("access_token", getAccessToken());
+    return get("service/json/data/document/", documentId, data);
   }
 
   private Map<String, String> lsdir(final String folder)
@@ -638,6 +662,17 @@ public class MberClient
   private String getMberUrl(String endpoint) throws MalformedURLException
   {
     return baseUrlWithPath(this.url, endpoint);
+  }
+
+  public String resolveAliasOrUUID(final String value)
+  {
+    if (isAlias(value)) {
+      return value;
+    }
+    if (isUUID(value)) {
+      return value;
+    }
+    return makeAlias(value);
   }
 
   private String makeAlias(final String value)

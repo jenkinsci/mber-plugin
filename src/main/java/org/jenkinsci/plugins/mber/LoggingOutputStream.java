@@ -24,7 +24,6 @@ THE SOFTWARE.
 */
 
 package org.jenkinsci.plugins.mber;
-import hudson.model.BuildListener;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Timer;
@@ -32,19 +31,22 @@ import java.util.TimerTask;
 
 public class LoggingOutputStream extends OutputStream
 {
+  public interface Listener
+  {
+    void logPercentComplete(final int percent);
+  }
+
   private final OutputStream output;
-  private final BuildListener listener;
+  private final Listener listener;
   private final Timer timer = new Timer();
   private final long expectedBytes;
-  private final String inputName;
   private long bytesWritten;
 
-  public LoggingOutputStream(OutputStream output, BuildListener listener, long expectedBytes, String inputName)
+  public LoggingOutputStream(OutputStream output, Listener listener, long expectedBytes)
   {
     this.output = output;
     this.listener = listener;
     this.expectedBytes = expectedBytes;
-    this.inputName = inputName;
     this.bytesWritten = 0;
     initTimer();
   }
@@ -56,7 +58,7 @@ public class LoggingOutputStream extends OutputStream
     this.output.close();
     if (this.listener != null) {
       int percent = Math.round(this.bytesWritten * 100 / this.expectedBytes);
-      this.listener.getLogger().println("Uploaded "+percent+"% of "+this.inputName);
+      this.listener.logPercentComplete(percent);
     }
   }
 
@@ -101,7 +103,7 @@ public class LoggingOutputStream extends OutputStream
       {
         if (listener != null) {
           int percent = Math.round(bytesWritten * 100 / expectedBytes);
-          listener.getLogger().println("Uploaded "+percent+"% of "+inputName);
+          listener.logPercentComplete(percent);
         }
       }
     }, timeout, timeout);

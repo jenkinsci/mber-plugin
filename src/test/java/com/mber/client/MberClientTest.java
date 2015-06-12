@@ -532,6 +532,88 @@ public class MberClientTest extends MberTest
         .withBody(response.toString())
       )
     );
+
+    // Provide an explicit NotFound for upload read when an invalid document ID is used.
+    response = new JSONObject();
+    response.put("status", "NotFound");
+    response.put("message", "Downloaded 0 bytes");
+
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/upload/AAAAAAAAAAAAAAAAAAAAAA?access_token=MOCKACCESSTOKEN"))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(404)
+        .withBody(response.toString())
+      )
+    );
+
+    // Provide a redirect for download read when a valid document ID is used.
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/raw/data/download/MOCKUPLOADID_AAAAAAAAA?access_token=MOCKACCESSTOKEN"))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(302)
+        .withHeader("Location", getMberUrl() + "/downloads/")
+      )
+    );
+
+    // Provide redirect for downlaod read when am alias is used.
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/raw/data/download/'jenkins-mber-plugin?access_token=MOCKACCESSTOKEN"))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(302)
+        .withHeader("Location", getMberUrl() + "/downloads/")
+      )
+    );
+
+    // Provide an explicit success for the download itself.
+    final byte[] data = "MOCKFILE".getBytes();
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/downloads/"))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withHeader("Content-Type", "application/octet-stream")
+        .withHeader("Content-Length", String.format("%s", data.length))
+        .withBody(data)
+      )
+    );
+
+    // Provide an explict Success for document read when a valid document ID is used.
+    response = new JSONObject();
+    response.put("status", "Success");
+    response.put("documentId", "MOCKDOCUMENTID_AAAAA");
+
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/document/MOCKDOCUMENTID_AAAAAAA?access_token=MOCKACCESSTOKEN"))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
+
+    // Provide an explict Success for document read when a valid document alias is used.
+    response = new JSONObject();
+    response.put("status", "Success");
+    response.put("documentId", "MOCKDOCUMENTID_AAAAAAA");
+
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/document/'jenkins-mber-plugin?access_token=MOCKACCESSTOKEN"))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
+
+    // Provide an explict Success for document read with tags.
+    response = new JSONObject();
+    response.put("status", "Success");
+    response.put("documentId", "MOCKDOCUMENTID_AAAAAAA");
+
+    WireMock.stubFor(WireMock.get(WireMock.urlEqualTo("/service/json/data/document?tags=test&access_token=MOCKACCESSTOKEN"))
+      .atPriority(1)
+      .willReturn(WireMock.aResponse()
+        .withStatus(200)
+        .withBody(response.toString())
+      )
+    );
   }
 
   @Test
@@ -861,6 +943,113 @@ public class MberClientTest extends MberTest
           return !MberJSON.getArray(result, "results").isEmpty();
         }
       });
+    }
+    finally {
+      mberCleanup(results, mber.getURL(), "build/project", "projectId");
+    }
+  }
+
+  @Test
+  public void downloadsFiles() throws Exception
+  {
+    checkMberVariables();
+
+    final MberClient mber = new MberClient(getMberUrl(), getMberApplicationId());
+    final Stack<JSONObject> results = new Stack<JSONObject>();
+
+    try {
+      File tempFile = File.createTempFile("jenkins-mber-plugin", "txt");
+      FilePath tempFilePath = new FilePath(tempFile);
+
+      // Fails with an error message unless logged in.
+      results.push(mber.download(tempFilePath, "jenkins-mber-plugin", false));
+      Assert.assertEquals("Downloaded file unexpectedly while not logged in", "Failed", results.peek().getString("status"));
+      assertNotEmpty("No error message found when downloading a file while not logged in", results.peek().getString("error"));
+
+      // Log into Mber so future calls in this test have an access token.
+      results.push(mber.login(getMberUsername(), getMberPassword()));
+      Assert.assertEquals("Failed to log into while testing downloads", "Success", results.peek().getString("status"));
+
+      // Fails when logged in and the document ID is invalid.
+      tempFilePath.write("", "UTF-8");
+      results.push(mber.download(tempFilePath, "AAAAAAAAAAAAAAAAAAAAAA", false));
+      Assert.assertEquals("Downloaded file unexpectedly with an invalid ID", "Failed", results.peek().getString("status"));
+      assertNotEmpty("No error message found when downloading a file with an invalid ID", results.peek().getString("error"));
+
+      // Succeeds when logged in and the document ID is valid.
+      tempFilePath.write("", "UTF-8");
+      results.push(mber.download(tempFilePath, "MOCKUPLOADID_AAAAAAAAA", false));
+      Assert.assertEquals("Failed to download file with a valid ID while logged in", "Success", results.peek().getString("status"));
+      Assert.assertEquals("Failed to download file with a valid ID to disk", "MOCKFILE", tempFilePath.readToString());
+
+      // Succeeds when logged in and the document alias is valid.
+      tempFilePath.write("", "UTF-8");
+      results.push(mber.download(tempFilePath, "jenkins-mber-plugin", false));
+      Assert.assertEquals("Failed to download file with a valid alias while logged in", "Success", results.peek().getString("status"));
+      Assert.assertEquals("Failed to download file with a valid alias to disk", "MOCKFILE", tempFilePath.readToString());
+    }
+    finally {
+      mberCleanup(results, mber.getURL(), "build/project", "projectId");
+    }
+  }
+
+  @Test
+  public void readsDocuments() throws Exception
+  {
+    checkMberVariables();
+
+    final MberClient mber = new MberClient(getMberUrl(), getMberApplicationId());
+    final Stack<JSONObject> results = new Stack<JSONObject>();
+
+    try {
+      // Fails with an error message unless logged in.
+      results.push(mber.readDocument("'jenkins-mber-plugin"));
+      Assert.assertEquals("Read document unexpectedly while not logged in", "Failed", results.peek().getString("status"));
+      assertNotEmpty("No error message found when reading a document while not logged in", results.peek().getString("error"));
+
+      // Log into Mber so future calls in this test have an access token.
+      results.push(mber.login(getMberUsername(), getMberPassword()));
+      Assert.assertEquals("Failed to log into while testing document read", "Success", results.peek().getString("status"));
+
+      // Fails when logged in and the document ID is invalid.
+      results.push(mber.readDocument("AAAAAAAAAAAAAAAAAAAAAA"));
+      Assert.assertEquals("Read document unexpectedly with an invalid ID", "Failed", results.peek().getString("status"));
+      assertNotEmpty("No error message found when reading a document with an invalid ID", results.peek().getString("error"));
+
+      // Succeeds when logged in and the document ID is valid.
+      results.push(mber.readDocument("MOCKDOCUMENTID_AAAAAAA"));
+      Assert.assertEquals("Failed to read document with a valid ID while logged in", "Success", results.peek().getString("status"));
+
+      // Succeeds when logged in and the document alias is valid.
+      results.push(mber.readDocument("'jenkins-mber-plugin"));
+      Assert.assertEquals("Failed to read document with a valid alias while logged in", "Success", results.peek().getString("status"));
+    }
+    finally {
+      mberCleanup(results, mber.getURL(), "build/project", "projectId");
+    }
+  }
+
+  @Test
+  public void findsDocumentsWithTags() throws Exception
+  {
+    checkMberVariables();
+
+    final MberClient mber = new MberClient(getMberUrl(), getMberApplicationId());
+    final Stack<JSONObject> results = new Stack<JSONObject>();
+
+    try {
+      // Fails with an error message unless logged in.
+      results.push(mber.findDocumentsWithTags(new String[]{"test"}));
+      Assert.assertEquals("Found document with tags unexpectedly while not logged in", "Failed", results.peek().getString("status"));
+      assertNotEmpty("No error message found when finding a document with tags while not logged in", results.peek().getString("error"));
+
+      // Log into Mber so future calls in this test have an access token.
+      results.push(mber.login(getMberUsername(), getMberPassword()));
+      Assert.assertEquals("Failed to log into while testing finding documents with tags", "Success", results.peek().getString("status"));
+
+      // Succeeds when logged in and the document tag is valid.
+      results.push(mber.findDocumentsWithTags(new String[]{"test"}));
+      Assert.assertEquals("Failed to find document with valid tags while logged in", "Success", results.peek().getString("status"));
     }
     finally {
       mberCleanup(results, mber.getURL(), "build/project", "projectId");

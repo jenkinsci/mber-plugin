@@ -24,7 +24,6 @@ THE SOFTWARE.
 */
 
 package com.mber.client;
-import hudson.model.BuildListener;
 import java.io.File;
 import java.io.InputStream;
 import java.io.IOException;
@@ -46,6 +45,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.impl.client.DefaultHttpClient;
 import org.jenkinsci.plugins.mber.LoggingFileEntity;
+import org.jenkinsci.plugins.mber.LoggingOutputStream;
 
 public class HTTParty
 {
@@ -99,7 +99,7 @@ public class HTTParty
     return execute(request);
   }
 
-  public static Call put(final String url, final File file, final BuildListener listener) throws IOException
+  public static Call put(final String url, final File file, final LoggingOutputStream.Listener listener) throws IOException
   {
     LoggingFileEntity entity = new LoggingFileEntity(file, listener);
     entity.setContentType("application/octet-stream");
@@ -172,13 +172,17 @@ public class HTTParty
     return entity;
   }
 
-  private static String toQuery(final JSONObject json) throws UnsupportedEncodingException
+  public static String toQuery(final JSONObject json) throws UnsupportedEncodingException
   {
     String query = "";
     Iterator<String> keys = json.keys();
     while (keys.hasNext()) {
       String key = keys.next();
       String value = json.getString(key);
+      // Array's need to be converted to comma separated strings.
+      if (MberJSON.isArray(json, key)) {
+        value = MberJSON.join(json.getJSONArray(key), ",");
+      }
       if (!key.isEmpty() && !value.isEmpty()) {
         if (query.isEmpty()) {
           query += "?";

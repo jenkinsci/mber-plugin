@@ -26,6 +26,7 @@ THE SOFTWARE.
 package com.mber.client;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.Iterator;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONException;
 import net.sf.json.JSONObject;
@@ -77,6 +78,37 @@ public class MberJSON
       return json.getJSONArray(key);
     }
     return new JSONArray();
+  }
+
+  public static boolean isArray(final JSONObject json, final String key)
+  {
+    return json.optJSONArray(key) != null;
+  }
+
+  public static String join(final JSONArray array, final String separator)
+  {
+    StringBuilder buffer = new StringBuilder();
+    if (array != null && !array.isEmpty()) {
+      final Iterator itr = array.iterator();
+      if (itr.hasNext()) {
+        buffer.append(itr.next().toString());
+      }
+      while (itr.hasNext()) {
+        buffer.append(separator);
+        buffer.append(itr.next().toString());
+      }
+    }
+    return buffer.toString();
+  }
+
+  public static boolean isSuccess(final JSONObject result)
+  {
+    return result != null && getString(result, "status").equalsIgnoreCase("Success");
+  }
+
+  public static boolean isFailed(final JSONObject result)
+  {
+    return result != null && getString(result, "status").equalsIgnoreCase("Failed");
   }
 
   public static JSONObject success()

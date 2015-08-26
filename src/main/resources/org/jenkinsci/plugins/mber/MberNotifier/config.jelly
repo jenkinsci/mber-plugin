@@ -27,6 +27,10 @@ THE SOFTWARE.
     [name="uploadDestinations"] .dd-handle {
       font-weight: bold;
     }
+    .setting-description {
+      font-size: 100%;
+      font-weight: bold;
+    }
   </style>
   <f:entry title="${%Access Profile}" field="accessProfileName">
     <f:select />
@@ -40,6 +44,7 @@ THE SOFTWARE.
   <f:optionalBlock title="${%Upload console output}" field="uploadConsoleLog" checked="${instance == null or instance.isUploadConsoleLog()}" inline="true" />
   <f:optionalBlock title="${%Upload test results}" field="uploadTestResults" checked="${instance == null or instance.isUploadTestResults()}" inline="true" />
   <f:optionalBlock title="${%Upload build artifacts}" field="uploadArtifacts">
+    <f:description>This configuration option has been deprecated and will be removed in the next major release. Please use the "Upload files to Mber" build step instead.</f:description>
     <f:entry>
       <f:repeatableProperty header="${%Artifacts}" field="uploadDestinations" minimum="1" />
     </f:entry>

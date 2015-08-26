@@ -24,10 +24,12 @@ THE SOFTWARE.
 */
 
 package org.jenkinsci.plugins.mber;
+import java.io.InterruptedIOException;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Timer;
 import java.util.TimerTask;
+import org.apache.commons.io.IOUtils;
 
 public class LoggingOutputStream extends OutputStream
 {
@@ -89,8 +91,14 @@ public class LoggingOutputStream extends OutputStream
     this.output.write(b);
   }
 
-  private void log(int length)
+  private void log(int length) throws IOException
   {
+    // Users may arbitrarily stop a job while files are being transfered.
+    // So we need to peridically check if the job's been canceled.
+    if (Thread.interrupted()) {
+      IOUtils.closeQuietly(this);
+      throw new LoggingInterruptedException("Build was canceled.");
+    }
     this.bytesWritten += length;
   }
 
@@ -107,5 +115,16 @@ public class LoggingOutputStream extends OutputStream
         }
       }
     }, timeout, timeout);
+  }
+}
+
+// Thrown when the write thread's been interrupted.
+// This extends InterruptedIOException so the Apache HTTP client won't consider
+// it a network failure and attempt a retry.
+class LoggingInterruptedException extends InterruptedIOException
+{
+  public LoggingInterruptedException(final String message)
+  {
+    super(message);
   }
 }

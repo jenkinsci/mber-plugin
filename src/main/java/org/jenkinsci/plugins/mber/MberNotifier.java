@@ -343,7 +343,7 @@ public class MberNotifier extends Notifier
     String uploadDirectoryId = response.getString("directoryId");
     String[] tags = getUploadTags(build, listener, "console.log", 0);
 
-    response = mber.upload(new FilePath(logFile), uploadDirectoryId, "console.log", tags, false);
+    response = mber.upload(new FilePath(logFile), uploadDirectoryId, "console.log", tags, false, true);
     if (response.getString("status").equals("Duplicate")) {
       log(listener, "You already have a build artifact named \"console.log\". Please rename your build artifact.");
       return;
@@ -657,7 +657,7 @@ public class MberNotifier extends Notifier
         String folderId = MberJSON.getString(response, "directoryId");
         if (!folderId.isEmpty()) {
           if (!isLink) {
-            response = mber.upload(path, folderId, path.getName(), tags, overwriteFiles);
+            response = mber.upload(path, folderId, path.getName(), tags, overwriteFiles, true);
           } else {
             response = mber.link(path, folderId, path.getName(), tags, overwriteFiles);
           }

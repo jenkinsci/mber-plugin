@@ -66,6 +66,9 @@ public class FileUploadCallable implements FilePath.FileCallable<JSONObject>, Lo
       json.put("path", file.getAbsolutePath());
       return json;
     }
+    catch (final LoggingInterruptedException e) {
+      return MberJSON.aborted(e);
+    }
     catch (final Exception e) {
       return MberJSON.failed(e);
     }

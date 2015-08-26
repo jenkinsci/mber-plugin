@@ -83,6 +83,9 @@ public class FileDownloadCallable implements FilePath.FileCallable<JSONObject>, 
 
       return MberJSON.success();
     }
+    catch (final LoggingInterruptedException e) {
+      return MberJSON.aborted(e);
+    }
     catch (final Exception e) {
       return MberJSON.failed(e);
     }

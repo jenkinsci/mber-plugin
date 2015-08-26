@@ -803,29 +803,29 @@ public class MberClientTest extends MberTest
       String[] tags = { "test" };
 
       // Fails with an error message unless logged in.
-      results.push(mber.upload(temp.getPath(), "jenkins-mber-plugin/test/upload", temp.getName(), tags, false));
+      results.push(mber.upload(temp.getPath(), "jenkins-mber-plugin/test/upload", temp.getName(), tags, false, false));
       Assert.assertEquals("Uploaded file unexpectedly while not logged in", "Failed", results.peek().getString("status"));
       assertNotEmpty("No error message found when uploading a file while not logged in", results.peek().getString("error"));
 
       // Fails with an error message if the directory ID's invalid.
       results.push(mber.login(getMberUsername(), getMberPassword()));
-      results.push(mber.upload(temp.getPath(), "AAAAAAAAAAAAAAAAAAAAAA", temp.getName(), tags, false));
+      results.push(mber.upload(temp.getPath(), "AAAAAAAAAAAAAAAAAAAAAA", temp.getName(), tags, false, false));
       Assert.assertEquals("Uploaded file unexpectedly with an invalid directory", "NotFound", results.peek().getString("status"));
       assertNotEmpty("No error message found when uploading a file with an invalid directory", results.peek().getString("error"));
 
       // Succeeds when logged in and the directory ID's valid.
       results.push(mber.mkpath("jenkins-mber-plugin/test/upload"));
       String uploadFolder = results.peek().getString("directoryId");
-      results.push(mber.upload(temp.getPath(), uploadFolder, temp.getName(), tags, false));
+      results.push(mber.upload(temp.getPath(), uploadFolder, temp.getName(), tags, false, false));
       Assert.assertEquals("Failed to upload file while logged in with a valid directory", "Success", results.peek().getString("status"));
 
       // Fails with an error message if the file already exists.
-      results.push(mber.upload(temp.getPath(), uploadFolder, temp.getName(), tags, false));
+      results.push(mber.upload(temp.getPath(), uploadFolder, temp.getName(), tags, false, false));
       Assert.assertEquals("Updated file unexpectedly", "Duplicate", results.peek().getString("status"));
       assertNotEmpty("No error message found when uploading a file that already exists", results.peek().getString("error"));
 
       // Succeeds if the file already exists and is being overwritten.
-      results.push(mber.upload(temp.getPath(), uploadFolder, temp.getName(), tags, true));
+      results.push(mber.upload(temp.getPath(), uploadFolder, temp.getName(), tags, true, false));
       Assert.assertEquals("Failed to update file when uploading a file that already exists", "Success", results.peek().getString("status"));
 
       // Uploads empty JSON as a raw document.

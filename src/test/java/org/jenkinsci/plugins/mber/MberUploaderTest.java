@@ -25,10 +25,12 @@ THE SOFTWARE.
 
 package org.jenkinsci.plugins.mber;
 import hudson.model.FreeStyleProject;
+import static junit.framework.TestCase.assertEquals;
+import static junit.framework.TestCase.assertNotSame;
 import org.junit.Test;
 import org.jvnet.hudson.test.HudsonTestCase;
 
-public class MberDownloaderTest extends HudsonTestCase {
+public class MberUploaderTest extends HudsonTestCase {
   @Test
   public void testConfigRoundtrip() throws Exception
   {
@@ -38,11 +40,25 @@ public class MberDownloaderTest extends HudsonTestCase {
 
     // Add a new build step to the project and make sure its config saves and loads.
     final FreeStyleProject project = createFreeStyleProject();
-    final MberDownloader before = new MberDownloader(accessProfile.getName(), "files", true, true, true, true, 0);
+    final MberUploader before = new MberUploader(accessProfile.getName(), "files", "folder", "tags", true, true, true, true, 0);
     project.getBuildersList().add(before);
     configRoundtrip(project);
-    final MberDownloader after = project.getBuildersList().get(MberDownloader.class);
+    final MberUploader after = project.getBuildersList().get(MberUploader.class);
     assertNotSame(before, after);
     assertEqualDataBoundBeans(before, after);
+  }
+
+  @Test
+  public void testConfigDefaults() throws Exception
+  {
+    // Make sure the build step's config has sensible defaults for null values.
+    MberUploader uploader = new MberUploader(null, null, null, null, false, false, false, false, 0);
+    assertEquals("Provide a default upload folder for null values", MberUploader.getDefaultArtifactFolder(), uploader.getArtifactFolder());
+    assertEquals("Provide default upload tags for null values", MberUploader.getDefaultArtifactTags(), uploader.getArtifactTags());
+
+    // Make sure the build step's config has sensible defaults for null values.
+    uploader = new MberUploader(null, null, "", "", false, false, false, false, 0);
+    assertEquals("Provide a default upload folder for empty values", MberUploader.getDefaultArtifactFolder(), uploader.getArtifactFolder());
+    assertEquals("Provide default upload tags for empty values", MberUploader.getDefaultArtifactTags(), uploader.getArtifactTags());
   }
 }

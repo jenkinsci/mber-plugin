@@ -24,10 +24,10 @@ THE SOFTWARE.
 */
 
 package org.jenkinsci.plugins.mber;
-import hudson.model.BuildListener;
 import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
+import org.apache.commons.io.IOUtils;
 import org.apache.http.entity.FileEntity;
 
 public class LoggingFileEntity extends FileEntity
@@ -48,7 +48,7 @@ public class LoggingFileEntity extends FileEntity
       super.writeTo(output);
     }
     finally {
-      output.close();
+      IOUtils.closeQuietly(output);
     }
   }
 }

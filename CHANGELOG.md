@@ -2,7 +2,7 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
-## 1.5.0 - 2015-08-26
+## 1.5.0 - 2015-09-02
 ### Added
 - Ability to upload to Mber Drive as a build step.
 - Ability to retry uploads and downloads a configurable number of times.
@@ -10,6 +10,7 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
 - Downloads so environment variables can be used in them.
+- Notifications so uploading through them is deprecated.
 
 ## 1.4.0 - 2015-06-12
 ### Added

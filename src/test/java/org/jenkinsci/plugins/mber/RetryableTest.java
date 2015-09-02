@@ -59,6 +59,32 @@ public class RetryableTest {
     Assert.assertEquals("Retryables should retry on null returns", maxAttempts, nullRetryable.callCount);
   }
 
+  @Test
+  public void retriesOnNonPositiveAttempts() throws Exception
+  {
+    // Make sure we retry at least once if no attempts are provided.
+    final CountingRetryable zeroRetryable = new CountingRetryable(0) {
+      @Override
+      public Integer mockCall()
+      {
+        return null;
+      }
+    };
+    zeroRetryable.run();
+    Assert.assertEquals("Retryables should retry at least once", 1, zeroRetryable.callCount);
+
+    // Make sure we retry a positive number of times.
+    final CountingRetryable absRetryable = new CountingRetryable(-3) {
+      @Override
+      public Integer mockCall()
+      {
+        return null;
+      }
+    };
+    absRetryable.run();
+    Assert.assertEquals("Retryables should retry a positive number of times", 3, absRetryable.callCount);
+  }
+
   private abstract class CountingRetryable extends Retryable<Integer>
   {
     public int callCount;

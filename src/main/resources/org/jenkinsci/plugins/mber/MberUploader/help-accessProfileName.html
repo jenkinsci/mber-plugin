@@ -1,4 +1,4 @@
-/*
+<!--
 The Jenkins Mber Plugin is free software distributed under the terms of the MIT
 license (http://opensource.org/licenses/mit-license.html) reproduced here:
 
@@ -21,28 +21,8 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-*/
-
-package org.jenkinsci.plugins.mber;
-import hudson.model.FreeStyleProject;
-import org.junit.Test;
-import org.jvnet.hudson.test.HudsonTestCase;
-
-public class MberDownloaderTest extends HudsonTestCase {
-  @Test
-  public void testConfigRoundtrip() throws Exception
-  {
-    // Set up a global access profile so its name can be resolved by the build step's config.
-    final MberAccessProfile accessProfile = new MberAccessProfile("name", "application", "username", "password", "url");
-    MberNotifier.setOrAddAccessProfile(accessProfile);
-
-    // Add a new build step to the project and make sure its config saves and loads.
-    final FreeStyleProject project = createFreeStyleProject();
-    final MberDownloader before = new MberDownloader(accessProfile.getName(), "files", true, true, true, true, 0);
-    project.getBuildersList().add(before);
-    configRoundtrip(project);
-    final MberDownloader after = project.getBuildersList().get(MberDownloader.class);
-    assertNotSame(before, after);
-    assertEqualDataBoundBeans(before, after);
-  }
-}
+-->
+<div>
+  Choose an access profile to authenticate with Mber. Access profiles can be
+  managed in the global configuration.
+</div>

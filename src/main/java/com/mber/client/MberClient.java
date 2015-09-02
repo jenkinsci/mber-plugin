@@ -194,12 +194,12 @@ public class MberClient
     return response;
   }
 
-  public JSONObject upload(final String path, final String directory, final String name, final String[] tags, final boolean overwrite)
+  public JSONObject upload(final String path, final String directory, final String name, final String[] tags, final boolean overwrite, final boolean showProgress)
   {
-    return upload(new FilePath(new File(path)), directory, name, tags, overwrite);
+    return upload(new FilePath(new File(path)), directory, name, tags, overwrite, showProgress);
   }
 
-  public JSONObject upload(final FilePath path, final String directory, final String name, final String[] tags, final boolean overwrite)
+  public JSONObject upload(final FilePath path, final String directory, final String name, final String[] tags, final boolean overwrite, final boolean showProgress)
   {
     try {
       JSONObject data = new JSONObject();
@@ -211,7 +211,7 @@ public class MberClient
       data.put("tags", tags);
       JSONObject response = post("service/json/data/upload", data);
       if (response.getString("status").equals("Success")) {
-        response = path.act(new FileUploadCallable(response.getString("url"), getListener()));
+        response = path.act(new FileUploadCallable(response.getString("url"), (showProgress) ? getListener() : null));
       } else if (response.getString("status").equals("Duplicate") && overwrite) {
         response = readdir(directory);
         if (response.getString("status").equals("Success") && response.has("result")) {
@@ -396,6 +396,17 @@ public class MberClient
     data.put("access_token", getAccessToken());
     data.put("transactionId", generateTransactionId());
     JSONObject response = post("service/json/build/build", data);
+    // Try to look up the build by alias if we get back a duplicate response.
+    // Build's are not required to be uniquely named, so doing a list and trying
+    // to find a matching name isn't feasable here.
+    if (MberJSON.isDuplicate(response) && alias != null && !alias.isEmpty()) {
+      response = readBuild(alias);
+      final JSONObject result = MberJSON.getObject(response, "result");
+      final String thisBuildId = MberJSON.getString(result, "buildId");
+      if (thisBuildId != null && !thisBuildId.isEmpty()) {
+        response.put("buildId", thisBuildId);
+      }
+    }
     setOrClearBuildId(response);
     return response;
   }
@@ -409,6 +420,14 @@ public class MberClient
       data.put("description", description);
     }
     return updateBuild(data);
+  }
+
+  private JSONObject readBuild(final String buildAliasOrUUID)
+  {
+    final String build = resolveAliasOrUUID(buildAliasOrUUID);
+    JSONObject data = new JSONObject();
+    data.put("access_token", getAccessToken());
+    return get("service/json/build/build/", build, data);
   }
 
   public JSONObject setBuildDirectory(final String directoryId)

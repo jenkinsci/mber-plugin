@@ -51,9 +51,10 @@ public class MberDownloader extends Builder
   private final boolean useTags;
   private final boolean showProgress;
   private final boolean optional;
+  private final int attempts;
 
   @DataBoundConstructor
-  public MberDownloader(String accessProfileName, String files, boolean overwriteExistingFiles, boolean useTags, boolean showProgress, boolean optional)
+  public MberDownloader(String accessProfileName, String files, boolean overwriteExistingFiles, boolean useTags, boolean showProgress, boolean optional, int attempts)
   {
     this.accessProfileName = accessProfileName;
     this.files = files;
@@ -61,6 +62,7 @@ public class MberDownloader extends Builder
     this.useTags = useTags;
     this.showProgress = showProgress;
     this.optional = optional;
+    this.attempts = attempts;
   }
 
   public String getAccessProfileName()
@@ -71,6 +73,11 @@ public class MberDownloader extends Builder
   public String getFiles()
   {
     return this.files;
+  }
+
+  public int getAttempts()
+  {
+    return this.attempts;
   }
 
   public boolean isOverwriteExistingFiles()
@@ -103,8 +110,8 @@ public class MberDownloader extends Builder
       return isOptional();
     }
 
-    // Set up an Mber client and log in so we get an access token.
-    final MberClient mber = new Retryable<MberClient>(listener.getLogger(), 5) {
+    // Set up a Mber client and log in so we get an access token.
+    final MberClient mber = new Retryable<MberClient>(listener.getLogger(), getAttempts()) {
       @Override
       public MberClient call()
       {
@@ -141,7 +148,7 @@ public class MberDownloader extends Builder
     if (!isUseTags()) {
       // Look for files with matching IDs.
       for (final String documentId : fileIdentifiers) {
-        final JSONObject response = new Retryable<JSONObject>(listener.getLogger(), 5) {
+        final JSONObject response = new Retryable<JSONObject>(listener.getLogger(), getAttempts()) {
           @Override
           public JSONObject call()
           {
@@ -172,14 +179,17 @@ public class MberDownloader extends Builder
     }
     else {
       // Look for files with matching tags.
-      final JSONObject response = new Retryable<JSONObject>(listener.getLogger(), 5) {
+      final JSONObject response = new Retryable<JSONObject>(listener.getLogger(), getAttempts()) {
         @Override
         public JSONObject call()
         {
           final JSONObject result = mber.findDocumentsWithTags(fileIdentifiers);
-          // Only retry failures. Semi-successful responses like NotFound, won't retry.
-          if (MberJSON.isFailed(result)) {
+          // Document indexing isn't instant, so retry if nothing's found.
+          if (!MberJSON.isSuccess(result)) {
             throw new RetryException(MberJSON.getString(result, "error"));
+          }
+          if (MberJSON.getArray(result, "results").isEmpty()) {
+            throw new RetryException("Failed to find files with tags: %s", StringUtils.join(fileIdentifiers, ", "));
           }
           return result;
         }
@@ -234,12 +244,12 @@ public class MberDownloader extends Builder
       // Download the file from Mber, retrying as necessary.
       final String documentId = document.getString("documentId");
       log(listener, "Dowloading file %s", name);
-      final JSONObject response = new Retryable<JSONObject>(listener.getLogger(), 5) {
+      final JSONObject response = new Retryable<JSONObject>(listener.getLogger(), getAttempts()) {
         @Override
         public JSONObject call()
         {
           final JSONObject response = mber.download(file, documentId, isShowProgress());
-          if (!MberJSON.isSuccess(response)) {
+          if (!MberJSON.isSuccess(response) && !MberJSON.isAborted(response)) {
             throw new RetryException(response.getString("error"));
           }
           return response;
@@ -248,6 +258,8 @@ public class MberDownloader extends Builder
 
       // The download's already been retried, so bail if it's not successful.
       if (!MberJSON.isSuccess(response)) {
+        log(listener, "Failed to download file %s", file);
+        log(listener, response.getString("error"));
         return isOptional();
       }
     }

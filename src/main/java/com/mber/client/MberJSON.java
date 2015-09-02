@@ -36,7 +36,7 @@ public class MberJSON
 {
   public static String getString(final JSONObject json, final String key)
   {
-    if (json.has(key)) {
+    if (json != null && json.has(key)) {
       return json.getString(key);
     }
     return "";
@@ -44,7 +44,7 @@ public class MberJSON
 
   public static boolean getBooleanOrFalse(final JSONObject json, final String key)
   {
-    if (json.has(key)) {
+    if (json != null && json.has(key)) {
       return json.getBoolean(key);
     }
     return false;
@@ -66,7 +66,7 @@ public class MberJSON
 
   public static JSONObject getObject(final JSONObject json, final String key)
   {
-    if (json.has(key)) {
+    if (json != null && json.has(key)) {
       return json.getJSONObject(key);
     }
     return new JSONObject();
@@ -74,7 +74,7 @@ public class MberJSON
 
   public static JSONArray getArray(final JSONObject json, final String key)
   {
-    if (json.has(key)) {
+    if (json != null && json.has(key)) {
       return json.getJSONArray(key);
     }
     return new JSONArray();
@@ -82,7 +82,7 @@ public class MberJSON
 
   public static boolean isArray(final JSONObject json, final String key)
   {
-    return json.optJSONArray(key) != null;
+    return json != null && json.optJSONArray(key) != null;
   }
 
   public static String join(final JSONArray array, final String separator)
@@ -109,6 +109,16 @@ public class MberJSON
   public static boolean isFailed(final JSONObject result)
   {
     return result != null && getString(result, "status").equalsIgnoreCase("Failed");
+  }
+
+  public static boolean isDuplicate(final JSONObject result)
+  {
+    return result != null && getString(result, "status").equalsIgnoreCase("Duplicate");
+  }
+
+  public static boolean isAborted(final JSONObject result)
+  {
+    return result != null && getString(result, "status").equalsIgnoreCase("Aborted");
   }
 
   public static JSONObject success()
@@ -138,5 +148,18 @@ public class MberJSON
     printer.println(e.getMessage());
     e.printStackTrace(printer);
     return failed(writer.toString());
+  }
+
+  public static JSONObject aborted(final String error)
+  {
+    JSONObject json = new JSONObject();
+    json.put("status", "Aborted");
+    json.put("error", error);
+    return json;
+  }
+
+  public static JSONObject aborted(final Exception e)
+  {
+    return aborted(e.getLocalizedMessage());
   }
 }

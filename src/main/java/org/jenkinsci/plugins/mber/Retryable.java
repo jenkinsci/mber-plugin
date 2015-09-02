@@ -36,15 +36,15 @@ public abstract class Retryable<T> {
   public Retryable(final PrintStream logger, final int maxAttempts)
   {
     this.logger = logger;
-    this.maxAttempts = maxAttempts;
+    this.maxAttempts = Math.max(Math.abs(maxAttempts), 1);
     this.waitTime = 10;
   }
 
   public Retryable(final PrintStream logger, final int maxAttempts, final int waitTime)
   {
     this.logger = logger;
-    this.maxAttempts = maxAttempts;
-    this.waitTime = waitTime;
+    this.maxAttempts = Math.max(Math.abs(maxAttempts), 1);
+    this.waitTime = Math.abs(waitTime);
   }
 
   protected abstract T call();
@@ -70,7 +70,7 @@ public abstract class Retryable<T> {
     }
     if (this.waitTime > 0) {
       // Don't wait longer than two minutes between any retry attempt.
-      final long waitTimeInSeconds = Math.min(attempt * this.waitTime, 120);
+      final long waitTimeInSeconds = getWaitTimeInSeconds(attempt);
       log("Retrying in %d seconds... %d/%d", waitTimeInSeconds, attempt, this.maxAttempts);
       try {
         Thread.sleep(waitTimeInSeconds * 1000);
@@ -89,6 +89,14 @@ public abstract class Retryable<T> {
       this.logger.println(String.format(message, args));
     }
   }
+
+  // Compute the wait time in seconds based on the attempt. A geometric bacoff
+  // algorithm is used with a ratio of 3:2. The max wait time is two minutes.
+  private long getWaitTimeInSeconds(final int attempt)
+  {
+    final double value = this.waitTime * Math.pow(1.5, attempt - 1);
+    return Math.min(Math.round(value), 120);
+  }
 }
 
 // Thrown when a error occurs and the operation should be retried.
@@ -97,5 +105,10 @@ class RetryException extends RuntimeException
   public RetryException(final String message)
   {
     super(message);
+  }
+
+  public RetryException(final String message, final Object... args)
+  {
+    super(String.format(message, args));
   }
 }
